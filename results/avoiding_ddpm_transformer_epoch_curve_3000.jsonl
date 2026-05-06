@@ -11,3 +11,4 @@
 {"checkpoint": "/home/qiang/projects/world_action_models/d3il/logs/avoiding/sweeps/ddpm_transformer/2026-05-05/19-52-56/0/epoch_1450_ddpm.pth", "entropy": 0.9001586881029681, "epoch": 1450, "seed": 0, "success_rate": 0.8729166388511658}
 {"checkpoint": "/home/qiang/projects/world_action_models/d3il/logs/avoiding/sweeps/ddpm_transformer/2026-05-05/19-52-56/0/epoch_1500_ddpm.pth", "entropy": 0.8752400098954783, "epoch": 1500, "seed": 0, "success_rate": 0.8604166507720947}
 {"checkpoint": "/home/qiang/projects/world_action_models/d3il/logs/avoiding/sweeps/ddpm_transformer/2026-05-05/19-52-56/0/epoch_150_ddpm.pth", "entropy": 0.7183788602899975, "epoch": 150, "seed": 0, "success_rate": 0.3062500059604645}
+{"checkpoint": "/home/qiang/projects/world_action_models/d3il/logs/avoiding/sweeps/ddpm_transformer/2026-05-05/19-52-56/0/epoch_1550_ddpm.pth", "entropy": 0.911805871565476, "epoch": 1550, "seed": 0, "success_rate": 0.90625}
