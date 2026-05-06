@@ -1,13 +1,16 @@
+numpy<2
 torch==1.13.0
 torchvision==0.14.0
 
 pybullet
 pyyaml
 scipy
-opencv-python-headless
-pin
+opencv-python-headless<4.12
+# pin 3.x currently pulls NumPy 2.x-only cmeel wheels on Python 3.10.
+pin==2.7.0
 matplotlib
 gin-config
+# gym 0.21.0 needs the compatibility bootstrap in install.sh on modern pip.
 gym==0.21.0
 
 scikit-learn

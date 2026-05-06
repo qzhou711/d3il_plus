@@ -1,14 +1,15 @@
 #!/bin/bash
+set -e
 
 ############ GENERAL ENV SETUP ############
 echo New Environment Name:
 read envname
 
 echo Creating new conda environment $envname
-conda create -n $envname python=3.10.8 -y -q
+conda create -n "$envname" python=3.10.8 -y -q
 
 eval "$(conda shell.bash hook)"
-conda activate $envname
+conda activate "$envname"
 
 echo
 echo Activating $envname
@@ -22,6 +23,16 @@ fi
 conda config --add channels conda-forge
 conda config --set channel_priority strict
 
+
+
+
+############ PYTHON DEPENDENCIES ############
+echo Installing Python dependencies...
+
+# gym 0.21.0 has legacy package metadata that newer pip/setuptools reject.
+python -m pip install --upgrade "pip<24.1" "setuptools==65.5.0" "wheel==0.38.4"
+python -m pip install "gym==0.21.0" --no-build-isolation
+python -m pip install -r requirements.txt
 
 # ############ PYTHON ############
 # echo Install mamba

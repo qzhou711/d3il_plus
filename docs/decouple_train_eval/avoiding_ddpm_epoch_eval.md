@@ -64,8 +64,9 @@ non_ema_model_state_dict.pth
 - 加载 agent；
 - 调用 `Avoiding_Sim.test_agent()`；
 - 将 `success_rate` 和 `entropy` 写入 JSONL；
-- 可选保存每个 checkpoint 的 rollout 轨迹 `.npz`；
-- 可选绘制每个 checkpoint 的轨迹图 `.png`。
+- 可选保存每个 checkpoint 的 rollout 轨迹 `.npz`。
+
+轨迹图不再由评测脚本直接生成，改为在 `notebooks/avoiding_trajectory_visualization.ipynb` 中读取 `.npz` 后交互式绘制。
 
 ### `simulation/avoiding_sim.py`
 
@@ -77,7 +78,7 @@ last_mode_encoding
 last_successes
 ```
 
-这样独立 eval 脚本可以在不改变原返回值的情况下，额外保存轨迹和绘图。
+这样独立 eval 脚本可以在不改变原返回值的情况下，额外保存轨迹数据。
 
 ## 推荐训练命令
 
@@ -142,18 +143,19 @@ python tools/eval_avoiding_checkpoints.py \
   --n-cores 10
 ```
 
-如果想同时保存轨迹数据和轨迹图：
+如果想保存轨迹数据：
 
 ```bash
 python tools/eval_avoiding_checkpoints.py \
-  --checkpoint-root /home/qiang/projects/world_action_models/d3il/logs/avoiding/sweeps/ddpm_transformer/2026-05-05/17-25-31 \
-  --output results/avoiding_ddpm_transformer_epoch_curve.jsonl \
+  --checkpoint-root /home/hulab/projects/world_action_model/d3il_plus/logs/avoiding/sweeps/ddpm_transformer/2026-05-05/19-52-56 \
+  --pattern eval_best_ddpm.pth \
+  --output results/avoiding_ddpm_transformer_epoch_curve_best.jsonl \
   --n-trajectories 480 \
   --n-cores 10 \
-  --trajectory-dir results/avoiding_trajectories_npz \
-  --plot-dir results/avoiding_trajectory_plots \
-  --max-plot-trajectories 240
+  --trajectory-dir results/avoiding_trajectories_npz
 ```
+
+随后打开 `notebooks/avoiding_trajectory_visualization.ipynb`，选择 JSONL 和 `trajectory_path` 来绘制轨迹图。
 
 如果想正式评测，可以把 rollout 数量改成：
 
@@ -184,12 +186,6 @@ epoch_*_ddpm.pth
 ```text
 --trajectory-dir
   保存每个 checkpoint 的轨迹、成功标记、mode encoding 和 mode id，格式为 .npz。
-
---plot-dir
-  保存每个 checkpoint 的轨迹可视化，格式为 .png。
-
---max-plot-trajectories
-  每张图最多绘制多少条轨迹，默认 240。轨迹太多时会固定随机种子抽样，避免图过于拥挤。
 ```
 
 ## JSONL 输出格式
@@ -197,9 +193,9 @@ epoch_*_ddpm.pth
 输出文件每行是一条 JSON，例如：
 
 ```json
-{"checkpoint": ".../0/epoch_20_ddpm.pth", "entropy": 0.31, "epoch": 20, "plot_path": ".../seed_0_epoch_20.png", "seed": 0, "success_rate": 0.12, "trajectory_path": ".../seed_0_epoch_20.npz"}
-{"checkpoint": ".../0/epoch_40_ddpm.pth", "entropy": 0.55, "epoch": 40, "plot_path": ".../seed_0_epoch_40.png", "seed": 0, "success_rate": 0.24, "trajectory_path": ".../seed_0_epoch_40.npz"}
-{"checkpoint": ".../1/epoch_20_ddpm.pth", "entropy": 0.28, "epoch": 20, "plot_path": ".../seed_1_epoch_20.png", "seed": 1, "success_rate": 0.10, "trajectory_path": ".../seed_1_epoch_20.npz"}
+{"checkpoint": ".../0/epoch_20_ddpm.pth", "entropy": 0.31, "epoch": 20, "seed": 0, "success_rate": 0.12, "trajectory_path": ".../seed_0_epoch_20.npz"}
+{"checkpoint": ".../0/epoch_40_ddpm.pth", "entropy": 0.55, "epoch": 40, "seed": 0, "success_rate": 0.24, "trajectory_path": ".../seed_0_epoch_40.npz"}
+{"checkpoint": ".../1/epoch_20_ddpm.pth", "entropy": 0.28, "epoch": 20, "seed": 1, "success_rate": 0.10, "trajectory_path": ".../seed_1_epoch_20.npz"}
 ```
 
 后续可以用这个文件画曲线：
@@ -209,7 +205,7 @@ epoch_*_ddpm.pth
 - y 轴 2：`entropy`
 - group：`seed`
 
-## 轨迹文件和可视化
+## 轨迹文件和 notebook 可视化
 
 如果指定 `--trajectory-dir`，每个 checkpoint 会保存一个 `.npz` 文件，包含：
 
@@ -221,11 +217,12 @@ mode_ids        shape: [n_trajectories]
 checkpoint      checkpoint 路径
 seed            seed
 epoch           epoch
+epoch_label     epoch、eval_best、last 或 checkpoint stem
 ```
 
 其中 `trajectories` 是机器人末端在 xy 平面上的 rollout 轨迹。无效 padding 点为 0，绘图时会自动裁掉。
 
-如果指定 `--plot-dir`，每个 checkpoint 会保存一张 `.png` 轨迹图。图中元素含义：
+打开 `notebooks/avoiding_trajectory_visualization.ipynb` 后，可以从 JSONL 中选择一个 `trajectory_path`，绘制对应 checkpoint 的轨迹图。图中元素含义：
 
 ```text
 彩色轨迹：成功 rollout，不同颜色表示不同 mode。
@@ -296,7 +293,7 @@ entropy 越低：成功轨迹越集中，可能存在 mode collapse
 
 `eval_avoiding_checkpoints.py` 会追加写入 `--output` 指定的 JSONL 文件。如果不想混入旧结果，请先换一个新的输出文件名，或手动删除旧文件。
 
-`--trajectory-dir` 和 `--plot-dir` 也会按 checkpoint 生成文件。如果重复评测同一个 checkpoint，同名 `.npz` / `.png` 会被覆盖，但 JSONL 会继续追加新行。
+`--trajectory-dir` 会按 checkpoint 生成 `.npz` 文件。如果重复评测同一个 checkpoint，同名 `.npz` 会被覆盖，但 JSONL 会继续追加新行。Notebook 中保存 `.png` 时也会覆盖同名图像。
 
 多进程评测建议保持：
 
