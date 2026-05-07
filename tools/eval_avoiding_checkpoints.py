@@ -51,6 +51,20 @@ def parse_args():
         help="Checkpoint filename glob relative to checkpoint-root.",
     )
     parser.add_argument(
+        "--epoch-regex",
+        default=r"epoch_(\d+)_(?:ddpm|cd)\.pth$",
+        help="Regex with one capture group used to infer the epoch number.",
+    )
+    parser.add_argument(
+        "--num-inference-steps",
+        type=int,
+        default=None,
+        help=(
+            "If set, overrides agents.num_inference_steps for consistency "
+            "agents. Recorded in the JSONL output."
+        ),
+    )
+    parser.add_argument(
         "--extra-override",
         action="append",
         default=[],
@@ -63,13 +77,13 @@ def safe_name(value):
     return str(value).replace("/", "_").replace(" ", "_")
 
 
-def infer_epoch(path):
-    match = re.search(r"epoch_(\d+)_ddpm\.pth$", path.name)
+def infer_epoch(path, epoch_regex=r"epoch_(\d+)_(?:ddpm|cd)\.pth$"):
+    match = re.search(epoch_regex, path.name)
     if match:
         return int(match.group(1))
-    if path.name == "eval_best_ddpm.pth":
+    if path.name in {"eval_best_ddpm.pth", "eval_best_cd.pth"}:
         return "eval_best"
-    if path.name == "last_ddpm.pth":
+    if path.name in {"last_ddpm.pth", "last_cd.pth"}:
         return "last"
     return None
 
@@ -101,6 +115,10 @@ def build_cfg(args, seed):
     ]
     if seed is not None:
         overrides.append(f"seed={seed}")
+    if args.num_inference_steps is not None:
+        # Only consistency agents have this field; using the explicit '+' lets
+        # us keep the override silently ignored otherwise.
+        overrides.append(f"agents.num_inference_steps={args.num_inference_steps}")
     overrides.extend(args.extra_override)
 
     with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), job_name="eval_avoiding_checkpoints"):
@@ -147,7 +165,7 @@ def save_trajectories(args, checkpoint, seed, epoch, sim):
 
 def evaluate_checkpoint(args, checkpoint):
     seed = infer_seed(checkpoint, Path(args.checkpoint_root).resolve())
-    epoch = infer_epoch(checkpoint)
+    epoch = infer_epoch(checkpoint, args.epoch_regex)
     cfg = build_cfg(args, seed)
 
     wandb.init(mode="disabled", project=cfg.wandb.project, entity=cfg.wandb.entity)
@@ -162,14 +180,18 @@ def evaluate_checkpoint(args, checkpoint):
     wandb.finish()
 
     success_rate = torch.mean(successes).item()
-    return {
+    result = {
         "seed": seed,
         "epoch": epoch,
         "success_rate": success_rate,
         "entropy": float(entropy),
         "checkpoint": str(checkpoint),
         "trajectory_path": trajectory_path,
+        "agent": args.agent,
     }
+    if args.num_inference_steps is not None:
+        result["num_inference_steps"] = int(args.num_inference_steps)
+    return result
 
 
 def main():

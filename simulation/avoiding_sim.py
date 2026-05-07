@@ -24,11 +24,17 @@ class Avoiding_Sim(BaseSim):
             device: str,
             render: bool,
             n_cores: int = 1,
-            n_trajectories: int = 30
+            n_trajectories: int = 30,
+            max_traj_len: int = 300,
     ):
         super().__init__(seed, device, render, n_cores)
 
         self.n_trajectories = n_trajectories
+        # Pre-allocated buffer for end-effector trajectories. Larger than the
+        # default expert episode length so a poorly trained policy can still be
+        # rolled out without crashing the eval. Trajectories longer than this
+        # get truncated (and a warning is logged).
+        self.max_traj_len = max_traj_len
 
     def eval_agent(self, agent, n_trajectories, mode_encoding, successes, robot_c_pos, pid, cpu_set):
 
@@ -70,7 +76,16 @@ class Avoiding_Sim(BaseSim):
                 c_pos.append(env.robot.current_c_pos)
 
             c_pos = torch.tensor(np.array(c_pos))[:, :2]
-            robot_c_pos[pid * n_trajectories + i, :c_pos.shape[0], :] = c_pos
+            buffer_len = robot_c_pos.shape[1]
+            actual_len = c_pos.shape[0]
+            if actual_len > buffer_len:
+                log.warning(
+                    "Rollout %d on core %d produced %d steps but trajectory buffer is %d; truncating.",
+                    i, pid, actual_len, buffer_len,
+                )
+                c_pos = c_pos[:buffer_len]
+                actual_len = buffer_len
+            robot_c_pos[pid * n_trajectories + i, :actual_len, :] = c_pos
 
             mode_encoding[pid * n_trajectories + i, :] = torch.tensor(info[0])
             successes[pid * n_trajectories + i] = torch.tensor(info[1])
@@ -84,7 +99,7 @@ class Avoiding_Sim(BaseSim):
 
         log.info('Starting trained model evaluation')
 
-        robot_c_pos = torch.zeros([self.n_trajectories, 150, 2]).share_memory_()
+        robot_c_pos = torch.zeros([self.n_trajectories, self.max_traj_len, 2]).share_memory_()
 
         mode_encoding = torch.zeros([self.n_trajectories, 9]).share_memory_()
         successes = torch.zeros(self.n_trajectories).share_memory_()

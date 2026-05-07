@@ -1,0 +1,125 @@
+_target_: agents.cd_agent.ConsistencyDistillationAgent
+_recursive_: false
+
+# Frozen DDPM teacher weights for **training** CD loss only.
+# Leave null for eval-only runs (``tools/eval_avoiding_checkpoints.py`` loads
+# the student ``*_cd.pth`` and never touches the teacher).
+# Training still requires an explicit override, e.g.
+# agents.teacher_ckpt=/abs/path/to/eval_best_ddpm.pth
+teacher_ckpt: null
+init_from_teacher: true
+
+# ---------------- student ----------------
+model:
+  _target_: agents.models.diffusion.consistency.ConsistencyDiffusion
+  _recursive_: false
+
+  state_dim: ${obs_dim}
+  action_dim: ${action_dim}
+  beta_schedule: 'cosine'
+  n_timesteps: 8
+  loss_type: 'pseudo_huber'         # 'pseudo_huber' (default) or 'l2'
+  clip_denoised: true
+  predict_epsilon: true
+  device: ${device}
+  student_param: 'eps'              # 'eps' (warm-start friendly) or 'x0'
+  huber_c: 0.005                    # bumped from LCM default (7.6e-4) - see docs
+  sigma_data: 1.0                   # action data std after the scaler
+  boundary_scaling: 'edm'           # 'edm' | 'sqrt_alpha_bar' | 'identity'
+  # Hybrid loss anchor at largest noise level. Pure CD by default;
+  # turn this on (e.g. 0.5) only after pure-CD baseline is confirmed
+  # not to suffer mode collapse (Avoiding has 24 modes, anchor MSE in
+  # multi-mode data pulls the student toward a degenerate mode mean).
+  lambda_direct: 0.0
+  weight_by_sigma: false            # optional sigma-inverse weighting on CD loss
+
+  model:
+    _target_: agents.models.diffusion.diffusion_models.DiffusionTransformerNetwork
+    state_dim: ${obs_dim}
+    action_dim: ${action_dim}
+    goal_conditioned: False
+    goal_seq_len: 10
+    obs_seq_len: ${window_size}
+    embed_pdrob: 0
+    goal_drop: 0
+    # Student is a 1-step deterministic predictor; keep dropout zero so
+    # warm-start from the teacher transfers cleanly and inference is
+    # reproducible.
+    attn_pdrop: 0.0
+    resid_pdrop: 0.0
+    embed_dim: ${n_embd}
+    n_layers: ${n_layer}
+    n_heads: ${n_head}
+    device: ${device}
+    linear_output: true
+
+# ---------------- teacher ----------------
+# Must match the architecture used to produce teacher_ckpt
+# (i.e. configs/agents/ddpm_transformer_agent.yaml).
+teacher:
+  _target_: agents.models.diffusion.gc_diffusion.Diffusion
+  _recursive_: false
+
+  state_dim: ${obs_dim}
+  action_dim: ${action_dim}
+  beta_schedule: 'cosine'
+  n_timesteps: 8
+  loss_type: 'l2'
+  clip_denoised: true
+  predict_epsilon: true
+  device: ${device}
+  diffusion_x: false
+  diffusion_x_M: 10
+
+  model:
+    _target_: agents.models.diffusion.diffusion_models.DiffusionTransformerNetwork
+    state_dim: ${obs_dim}
+    action_dim: ${action_dim}
+    goal_conditioned: False
+    goal_seq_len: 10
+    obs_seq_len: ${window_size}
+    embed_pdrob: 0
+    goal_drop: 0
+    attn_pdrop: 0.2
+    resid_pdrop: 0.1
+    embed_dim: ${n_embd}
+    n_layers: ${n_layer}
+    n_heads: ${n_head}
+    device: ${device}
+    linear_output: true
+
+# ---------------- optimisation ----------------
+optimization:
+  _target_: torch.optim.Adam
+  lr: 2e-4
+  weight_decay: 0
+
+trainset: ${trainset}
+valset: ${valset}
+train_batch_size: ${train_batch_size}
+val_batch_size: ${val_batch_size}
+num_workers: ${num_workers}
+epoch: ${epoch}
+device: ${device}
+scale_data: ${scale_data}
+eval_every_n_epochs: ${eval_every_n_epochs}
+
+# Target network EMA used as f_theta_minus for the CD loss. Slow EMA helps
+# stabilise the moving target during distillation.
+target_decay: 0.95
+update_target_every_n_steps: 1
+
+# Default sampling step count used by predict() and evaluate().
+num_inference_steps: 1
+
+# LR schedule: linear warmup then cosine decay to lr_min_ratio * lr.
+# 0 disables that phase. Defaults below are sensible for ~150 epoch runs
+# with ~7 steps/epoch on Avoiding.
+lr_warmup_steps: 100
+lr_min_ratio: 0.1
+grad_clip: 1.0
+
+goal_window_size: 1
+window_size: ${window_size}
+goal_conditioned: false
+checkpoint_every_n_epochs: 0
